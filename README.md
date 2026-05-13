@@ -1,223 +1,67 @@
-# TEBD Spin Chain
+# Tensor Network Simulators
 
-**Real-time evolution of Matrix Product States using the Time-Evolving Block Decimation algorithm in Vidal (Γ–Λ) canonical form.**
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
----
-
-## Overview
-
-This project implements the **Time-Evolving Block Decimation (TEBD)** algorithm for simulating real-time quantum dynamics of one-dimensional spin-1/2 chains. The state is represented as a **Matrix Product State (MPS)** in **Vidal canonical form**, where the entanglement structure is made explicit through the Γ–Λ decomposition.
-
-The implementation follows the original formulation of Vidal (2004) and supports:
-
-- Arbitrary initial product states (Néel, domain wall, uniform, custom)
-- Anisotropic XXZ Hamiltonian with a longitudinal magnetic field
-- Second-order Suzuki–Trotter time evolution
-- Correct open-boundary field distribution across edge and bulk bonds
-- Entanglement entropy, bond dimensions, and energy as observables
-- Validation against exact diagonalisation (ED) for small systems
+A unified Python framework for classical simulation of quantum systems using Tensor Networks, spanning two distinct physics domains.
 
 ---
 
-## Physics
+## Subpackages
 
-The Hamiltonian is defined using **Pauli matrices** (not spin-1/2 operators):
+### `mps_mpo` — Closed Systems
+Ground-state optimization and real-time dynamics of 1D spin-1/2 chains. The quantum state is represented as a Matrix Product State (MPS) in Vidal canonical form ($\Gamma$--$\Lambda$ decomposition), evolving under the anisotropic XXZ Hamiltonian:
 
-$$H = -h_z \sum_{l=1}^{L} \sigma_z^{[l]} + \sum_{l=1}^{L-1} \left( J_x\, \sigma_x^{[l]}\sigma_x^{[l+1]} + J_y\, \sigma_y^{[l]}\sigma_y^{[l+1]} + J_z\, \sigma_z^{[l]}\sigma_z^{[l+1]} \right)$$
+$$H = -h_z \sum_{l} \sigma_z^{[l]} + \sum_{l} \left( J_x \sigma_x^{[l]}\sigma_x^{[l+1]} + J_y \sigma_y^{[l]}\sigma_y^{[l+1]} + J_z \sigma_z^{[l]}\sigma_z^{[l+1]} \right)$$
 
-> **Convention note:** TeNPy uses spin operators $S = \sigma/2$. To reproduce TeNPy results with couplings $(J_x^T, J_z^T, h_z^T)$, use $J = J^T/4$ and $h_z = h_z^T/2$.
+* **TEBD Engine**: Second-order Suzuki–Trotter real-time evolution (per-step error $\mathcal{O}(dt^3)$).
+* **DMRG Engine**: Two-site variational sweeps with an iterative Lanczos eigensolver; converges to $|\Delta E| < \texttt{tol}$.
 
-### Vidal Canonical Form
+### `mpdo` — Open Systems
+Noisy quantum circuit simulation where the density operator $\rho$ is represented as a Matrix Product Density Operator (MPDO). Each site tensor $T^{[k]}$ carries the shape `(χ_l, χ_r, d, κ)`, where the extra $\kappa$ index encodes classical mixing from environmental dissipation.
 
-The MPS is stored as a list of **Gamma tensors** $\Gamma^{[l]}$ (shape `(χ_L, d, χ_R)`) and **Schmidt vectors** $\Lambda^{[l]}$ (shape `(χ,)`), related by:
+#### Supported Noise Channels
+*All channels are single-qubit CPTP maps applied independently per qubit after each gate operation:*
 
-$$|\psi\rangle = \sum_{\{s\}} \Lambda^{[0]} \Gamma^{[1]} \Lambda^{[1]} \Gamma^{[2]} \Lambda^{[2]} \cdots \Gamma^{[L]} \Lambda^{[L]} |s_1 s_2 \cdots s_L\rangle$$
+| Channel | Map | Kraus Operators |
+| :--- | :--- | :--- |
+| **Amplitude Damping** | $\mathcal{E}(\rho) = A_0\rho A_0^\dagger + A_1\rho A_1^\dagger$ | $A_0 = \mathrm{diag}(1,\sqrt{1-\gamma})$, $A_1 = \sqrt{\gamma}\vert 0\rangle\langle 1\vert$ |
+| **Dephasing** | $\mathcal{E}(\rho) = (1-\epsilon)\rho + \epsilon Z\rho Z$ | $\sqrt{1-\epsilon}I$, $\sqrt{\epsilon}Z$ |
+| **Depolarizing** | $\mathcal{E}(\rho) = (1-\frac{3\epsilon}{4})\rho + \frac{\epsilon}{4}(X\rho X + Y\rho Y + Z\rho Z)$ | $\sqrt{1-\frac{3\epsilon}{4}}I$, $\sqrt{\frac{\epsilon}{4}}\{X,Y,Z\}$ |
 
-The two-site reduced state at bond $(l, l+1)$ is obtained by contracting:
-
-$$\Theta^{[l,l+1]} = \Lambda^{[l]} \cdot \Gamma^{[l]} \cdot \Lambda^{[l+1]} \cdot \Gamma^{[l+1]} \cdot \Lambda^{[l+2]}$$
-
-### TEBD Gate Application
-
-Each time step applies a **second-order Suzuki–Trotter** decomposition:
-
-```
-even bonds (dt/2)  →  odd bonds (dt)  →  even bonds (dt/2)
-```
-
-The per-step Trotter error is $\mathcal{O}(dt^3)$, giving a total error of $\mathcal{O}(dt^2)$ at fixed time $t$.
-
-### Open-Boundary Field Distribution
-
-For a finite chain, the on-site field $-h_z \sigma_z^{[l]}$ is distributed across bonds so that every site receives its full contribution exactly once:
-
-| Bond | Site $l$ gets | Site $l+1$ gets |
-|---|---|---|
-| Left edge $(0, 1)$ | $-h_z$ (full) | $-h_z/2$ |
-| Bulk $(l, l+1)$ | $-h_z/2$ | $-h_z/2$ |
-| Right edge $(L-2, L-1)$ | $-h_z/2$ | $-h_z$ (full) |
+Virtual bond dimensions are controlled by a robust **two-stage truncation protocol**: a local SVD on the $\kappa$ bond immediately following noise injection, followed by a global left-moving `QR` / right-moving `SVD` canonical sweep on the $\chi$ bonds executed once per layer.
 
 ---
 
-## Repository Structure
+---
+## Validation & Benchmarks
 
-```
-tebd-spin-chain/
-│
-├── README.md
-├── requirements.txt
-│
-├── src/
-│   ├── __init__.py              # Public API
-│   ├── mps.py                   # MPS initialisation in Vidal form
-│   ├── tebd.py                  # Gate application and sweep
-│   ├── hamiltonian.py           # XXZ Hamiltonian and Trotter gates
-│   ├── observables.py           # Energy, entropy, bond dimensions
-│   └── utils.py                 # Convergence checks and helpers
-│
-├── examples/
-│   └── run_tebd.ipynb           # All examples and demonstrations
-│                                #   · Energy conservation check
-│                                #   · Entanglement entropy growth
-│                                #   · Exact diagonalisation comparison
-│                                #   · Schmidt value validation plots
-│
-├── tests/
-│   ├── 
-│   └── 
-│
-└── figures/
-```
+* **`mps_mpo`**: TEBD Schmidt values and DMRG ground-state energies are rigorously benchmarked against Exact Diagonalization (ED) for system sizes $L \leq 12$.
+* **`mpdo`**: Reconstructed density matrix fidelity $\mathcal{F}(\rho_\text{MPDO}, \rho_\text{Qiskit})$ is validated against exact mixed-state backends in `Qiskit Aer` across all three noise channels, circuit depths up to $D=20$, and system sizes up to $N=10$.
+
+### MPDO Convergence Profile
+The figure below illustrates the simulator's fidelity tracking performance against Qiskit Aer as a function of the maximum virtual bond dimension ($\chi_{\max}$) under varying noise parameters ($\gamma$):
+
+![TEBD Circuit Simulation Comparison](figures/bond_dimension_growth.png)
+![MPDO Circuit Simulation Comparison](figures/fidelity_plot_chi_AD_N10_D20_noise0.1.png)
+
+The alignment confirms two key physical features: the strict entanglement cutoff tracking limits at restricted dimensions ($\chi_{\max}=16$), and noise-induced decompressibility where higher dissipation rates drive the system into low-entanglement mixed classical states that are highly optimized for low-rank matrix product representations.
 
 ---
 
-## Installation
-
-```bash
-git clone https://github.com/Chayan-PHYSICS/TEBD-spin-chain.git
-cd TEBD-spin-chain
-pip install -r requirements.txt
-```
-
-**Requirements:** Python ≥ 3.8, NumPy, SciPy, Matplotlib.
-
 ---
+## Code Architecture & API Layout
 
-## Quick Start
-All examples are demonstrated interactively in `examples/run_tebd.ipynb`.
-For a self-contained walkthrough, open the notebook directly:
+The suite is engineered using a hybrid architectural paradigm, balancing performance-optimized functional routines with descriptive, high-level interfaces across both physics domains:
 
-```bash
-jupyter notebook examples/run_tebd.ipynb
-```
+* **Closed-System Engine (`mps_mpo`)**: Implements a highly efficient **functional paradigm** to eliminate overhead during deep numerical simulation loops. Pure, stateless mathematical transformations drive state manipulation:
+  * `init_mps()`: Instantiates and initializes the Vidal canonical $\Gamma$--$\Lambda$ tensor chains.
+  * `tebd_sweep()`: Executes local two-site Suzuki–Trotter contractions and virtual bond truncations.
+  * `run_dmrg()`: Governs variational ground-state sweeps via a site-canonical Lanczos eigensolver.
+* **Open-System Engine (`mpdo`)**: Encapsulates the tracking of mixed states and auxiliary environment indices within unified interfaces to simplify multi-layer circuit configurations:
+  * `MPDOState`: A unified state container managing local tensor registers, tracking cutoffs ($\chi_{\max}$, $\kappa_{\max}$), unitary gate injections, and dual-stage canonicalization.
+  * `KrausChannel` (ABC): An abstract base class defining a polymorphic interface for seamless configuration of local CPTP noise maps (`AmplitudeDamping`, `Dephasing`, `Depolarizing`).
 
-```python
-from src.mps         import init_mps
-from src.hamiltonian import build_xxz_two_site, build_trotter_gates
-from src.tebd        import tebd_sweep
-from src.observables import compute_energy, entanglement_entropy_bond
-
-# Parameters
-n_sites         = 20
-chi_max         = 32
-dt              = 0.005
-Jx, Jy, Jz, hz = -1.0, -1.0, -1.0, 1.0
-
-# Initial state: domain wall |↓↓↑↑↑...↑⟩
-A_list, lam_list = init_mps([("down", 2), ("up", n_sites - 2)])
-
-# Build Hamiltonians and Trotter gates
-h_left, h_bulk, h_right = build_xxz_two_site(Jx, Jy, Jz, hz)
-even_gates, odd_gates   = build_trotter_gates(h_left, h_bulk, h_right, dt)
-
-# Time evolution
-for step in range(1000):
-    tebd_sweep(A_list, lam_list, even_gates, chi_max, parity=0)  # even, dt/2
-    tebd_sweep(A_list, lam_list, odd_gates,  chi_max, parity=1)  # odd,  dt
-    tebd_sweep(A_list, lam_list, even_gates, chi_max, parity=0)  # even, dt/2
-
-# Observables
-d = 2
-E = compute_energy(
-    A_list, lam_list,
-    h_left.reshape(d,d,d,d),
-    h_bulk.reshape(d,d,d,d),
-    h_right.reshape(d,d,d,d),
-)
-S = entanglement_entropy_bond(lam_list[n_sites // 2])
-
-print(f"Energy : {E:.6f}")
-print(f"Entropy (central bond) : {S:.6f}")
-```
----
-## Key Features
-
-### Flexible Initial States
-
-```python
-# Explicit flat list
-A_list, lam_list = init_mps([1, 0, 1, 0, 1, 0])
-
-# Néel state — 20 sites
-A_list, lam_list = init_mps([("up", 1), ("down", 1)] * 10)
-
-# Domain wall — 15 up, 15 down
-A_list, lam_list = init_mps([("up", 15), ("down", 15)])
-```
-
-### Energy Conservation Check
-
-Since unitary time evolution is energy-conserving, the drift in $\langle H \rangle$ over time quantifies the combined Trotter and truncation error:
-
-```python
-E0 = compute_energy(A_list, lam_list, h_left_4, h_bulk_4, h_right_4)
-
-for step in range(n_steps):
-    # ... evolve ...
-    E = compute_energy(A_list, lam_list, h_left_4, h_bulk_4, h_right_4)
-    print(f"|ΔE/E0| = {abs(E - E0) / abs(E0):.2e}")
-```
-
-### Exact Diagonalisation Validation
-
-For small systems ($L \leq 12$), the Schmidt values from TEBD are compared against those obtained by exact SVD of the full state vector:
-
-```python
-from examples.compare_with_ed import run_comparison, print_summary
-
-max_errors, times, psi_ed, lam_list = run_comparison(
-    n_sites=6, chi_max=10, dt=0.005, n_steps=50
-)
-print_summary(max_errors)
-```
-
-A correct implementation shows errors growing as $\mathcal{O}(dt^3 \cdot \text{step})$, with no sudden jumps.
-
----
-
-## Validation
-
-The figure below shows the TEBD error against exact diagonalisation for a 6-site XXZ chain ($J_x = J_y = J_z = -1$, $h_z = 1$, $\chi_\text{max} = 10$, $dt = 0.005$):
-
-- **Left:** Error growth tracks the expected $\mathcal{O}(dt^3 \cdot \text{step})$ Trotter scaling.
-- **Right:** TEBD bond dimensions match ED exactly — truncation is negligible at $\chi_\text{max} = 10$ for this system size.
-
-*(See `examples/run_tebd.ipynb` to reproduce all results.)*
-
----
-
-## Algorithm Reference
-
-| Step | Operation |
-|---|---|
-| 1 | Build $M = \Gamma^{[l]} \cdot \Lambda^{[l+1]} \cdot \Gamma^{[l+1]}$ |
-| 2 | Apply gate $U$ on physical indices of $M$ only |
-| 3 | Form $\Theta = \Lambda^{[l]} \cdot M \cdot \Lambda^{[l+2]}$ |
-| 4 | SVD: $\Theta = U_\text{svd} \cdot S \cdot V^\dagger_\text{svd}$ |
-| 5 | Truncate to $\chi_\text{max}$ largest singular values |
-| 6 | Reconstruct $\Gamma^{[l]}_\text{new} = \Lambda^{[l]^{-1}} \cdot U_\text{svd}$, $\quad \Gamma^{[l+1]}_\text{new} = V^\dagger_\text{svd} \cdot \Lambda^{[l+2]^{-1}}$ |
-
----
+*Low-level tensor contractions remain decoupled as optimized pure functions to guarantee straightforward testability, maintenance, and numerical reliability.*
 
 ## Reference
 

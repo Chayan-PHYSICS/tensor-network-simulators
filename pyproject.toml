@@ -3,19 +3,45 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tebd-spin-chain"
+name = "tensor-network-suite"
 version = "0.1.0"
-description = "TEBD implementation for real-time dynamics of 1D spin chains"
+description = "A unified Tensor Network simulation suite for closed-system quantum many-body dynamics (MPS/MPO/TEBD) and noisy, open-system quantum computational circuits (MPDO)."
+readme = "README.md"
+requires-python = ">=3.9"
 authors = [
     { name = "Chayan Kr. Mandal", email = "ckm.radhanagar@gmail.com" }
 ]
-readme = "README.md"
-requires-python = ">=3.9"
+keywords = [
+    "tensor-networks", 
+    "matrix-product-states", 
+    "matrix-product-density-operators", 
+    "quantum-simulation", 
+    "open-quantum-systems", 
+    "tebd"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License"
+]
 dependencies = [
     "numpy>=1.22",
     "scipy>=1.8",
     "matplotlib>=3.5",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "qiskit>=1.0.0",
+    "qiskit-aer>=0.13.0"
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["src", "src.*"]

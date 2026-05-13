@@ -21,7 +21,7 @@ sdist/
 var/
 wheels/
 *.egg-info/
-tebd_spin_chain.egg-info/
+tensor_network_suite.egg-info/
 .installed.cfg
 *.egg
 
@@ -42,7 +42,8 @@ coverage.xml
 .pytest_cache/
 
 # Jupyter Notebook
-.ipynb_checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
 
 # pyenv
 .python-version
@@ -69,6 +70,11 @@ Thumbs.db
 *.npy
 *.h5
 *.pkl
+*.npz
+*.dat
+*.pkl
+*.csv
+*.txt
 data/
 results/
 output/

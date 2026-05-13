@@ -17,6 +17,7 @@ import numpy.typing as npt
 from dataclasses import dataclass
 from scipy.linalg import expm
 from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 #: Local Hilbert-space dimension for spin-1/2.
 D_SPIN: int = 2
@@ -301,7 +302,132 @@ def build_trotter_gates(
     return even_gates, odd_gates
 
 
+#----------------------------------------------NEW ADD-----------------------------------------------
+def build_xxz_mpo(
+    L: int,
+    Jx: float,
+    Jy: float,
+    Jz: float,
+    hx: float,
+    hz: float,
+    S: float = 0.5,
+) -> List[np.ndarray]:
+    """Construct the MPO representation of the generalized XXZ Hamiltonian.
 
+    Implements the Hamiltonian
 
+        H = Σ_i [ Jx·Sx_i·Sx_{i+1} + Jy·Sy_i·Sy_{i+1} + Jz·Sz_i·Sz_{i+1} ]
+              - Σ_i [ hx·Sx_i + hz·Sz_i ]
 
+    as a list of rank-4 MPO tensors with index ordering ``(D_L, D_R, d, d)``,
+    where ``D`` is the MPO bond dimension and ``d = 2S + 1`` is the local
+    physical dimension.
 
+    The finite-state-machine (FSM) structure uses bond dimension ``D = 5``
+    with the following auxiliary states:
+
+    =========  =============================================
+    Index      Role
+    =========  =============================================
+    0          Vacuum / rightward propagation ("start")
+    1          Carrying Sx (awaiting right partner)
+    2          Carrying Sy (awaiting right partner)
+    3          Carrying Sz (awaiting right partner)
+    4          Energy accumulator ("done")
+    =========  =============================================
+
+    The bulk W tensor as a block matrix (each block is a (d x d) operator):
+
+               to:  0     1     2     3        4
+        from  0  [  I     Sx    Sy    Sz    H_local ]
+              1  [  0     0     0     0     Jx·Sx   ]
+              2  [  0     0     0     0     Jy·Sy   ]
+              3  [  0     0     0     0     Jz·Sz   ]
+              4  [  0     0     0     0       I     ]
+
+    W[α, β] is the local operator applied at this site when the MPO bond
+    transitions from auxiliary state α (incoming, left bond) to state β
+    (outgoing, right bond).
+
+    Parameters
+    ----------
+    L : int
+        Number of lattice sites.
+    S : float, optional
+        Spin quantum number (default ``0.5``).  Currently only ``S=0.5``
+        is implemented; other values raise ``NotImplementedError``.
+    Jx, Jy, Jz : float, optional
+        Exchange couplings along x, y, z (default ``1.0`` each).
+    hx, hz : float, optional
+        Transverse and longitudinal magnetic field strengths (default ``0.0``).
+
+    Returns
+    -------
+    mpo_list : list of np.ndarray
+        Length-``L`` list of MPO tensors.  Boundary tensors have shapes
+        ``(1, D, d, d)`` (left edge) and ``(D, 1, d, d)`` (right edge);
+        bulk tensors have shape ``(D, D, d, d)``.
+
+    Raises
+    ------
+    ValueError
+        If ``L < 2``.
+    NotImplementedError
+        If ``S != 0.5``.
+    """
+    if L < 2:
+        raise ValueError(f"Chain length must be at least 2, got L={L}.")
+    if S != 0.5:
+        raise NotImplementedError(
+            f"Spin-S MPO is not yet implemented for S={S}; only S=0.5 is supported."
+        )
+
+    # ------------------------------------------------------------------ #
+    # Spin-1/2 operators                                                   #
+    # ------------------------------------------------------------------ #
+    # I  = np.eye(2, dtype=complex)
+    # Sx = 0.5 * np.array([[0,  1 ], [1,  0 ]], dtype=complex)
+    # Sy = 0.5 * np.array([[0, -1j], [1j, 0 ]], dtype=complex)
+    # Sz = 0.5 * np.array([[1,  0 ], [0, -1 ]], dtype=complex)
+    # d  = I.shape[0]
+
+    Sx = 0.5 * SIGMA_X
+    Sy = 0.5 * SIGMA_Y
+    Sz = 0.5 * SIGMA_Z
+    d  = IDENTITY.shape[0]
+
+    # ------------------------------------------------------------------ #
+    # Bulk MPO tensor  W[D_L, D_R, d, d]                                  #
+    # ------------------------------------------------------------------ #
+    D = 5
+    W = np.zeros((D, D, d, d), dtype=complex)
+
+    H_local = -hx * Sx - hz * Sz   # one-body term accumulated at each site
+
+    # Row 0 — "start" state: fan out to all interaction channels
+    W[0, 0] = IDENTITY
+    W[0, 1] = Sx
+    W[0, 2] = Sy
+    W[0, 3] = Sz
+    W[0, 4] = H_local
+
+    # Rows 1–3 — "carrying" states: complete the two-site interaction
+    W[1, 4] = Jx * Sx
+    W[2, 4] = Jy * Sy
+    W[3, 4] = Jz * Sz
+
+    # Row 4 — "done" state: propagate accumulated energy to the right
+    W[4, 4] = IDENTITY
+
+    # ------------------------------------------------------------------ #
+    # Boundary projections                                                 #
+    # ------------------------------------------------------------------ #
+    W_left  = W[0:1, :, :, :]   # shape (1, D, d, d) — only "start" row
+    W_right = W[:, 4:5, :, :]   # shape (D, 1, d, d) — only "done" column
+
+    mpo_list = (
+        [W_left]
+        + [W.copy() for _ in range(L - 2)]
+        + [W_right]
+    )
+    return mpo_list

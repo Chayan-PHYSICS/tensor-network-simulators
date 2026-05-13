@@ -1,50 +1,20 @@
 """
-tebd-spin-chain
-===============
-A Python implementation of the Time-Evolving Block Decimation (TEBD) algorithm
-for real-time evolution of Matrix Product States (MPS) in Vidal (Gamma-Lambda) form.
+Advanced Quantum Tensor Network Simulation Suite.
 
-Modules
--------
-mps         : MPS initialization and state representation
-tebd        : TEBD gates and sweep logic
-hamiltonian : Hamiltonian construction and Trotter gate generation
-observables : Physical observables (energy, entropy, bond dimensions)
-utils       : Convergence checks and helper utilities
+A unified framework for classical simulations of quantum systems, spanning closed 
+many-body dynamics (MPS/MPO) and open, noisy quantum computational circuits (MPDO).
 """
-# MPS
-from .mps import init_mps
-# TEBD
-from .tebd import apply_2site_gate, tebd_sweep
-# Hamiltonian
-from .hamiltonian import build_xxz_two_site, build_full_hamiltonian, build_trotter_gates
-# Observables
-from .observables import (
-    compute_energy,
-    bond_dimensions,
-    max_bond_dimension,
-    entanglement_entropy_bond,
-    entanglement_entropy_profile,
-)
-# Utils
-from .utils import is_converged
+
+# Expose the subpackages cleanly to the absolute top layer namespace
+from . import mps_mpo
+from . import mpdo
 
 __all__ = [
-    # MPS
-    "init_mps",
-    # TEBD
-    "apply_2site_gate",
-    "tebd_sweep",
-    # Hamiltonian
-    "build_xxz_two_site",
-    "build_full_hamiltonian",
-    "build_trotter_gates",
-    # Observables
-    "compute_energy",
-    "bond_dimensions",
-    "max_bond_dimension",
-    "entanglement_entropy_bond",
-    "entanglement_entropy_profile",
-    # Utils
-    "is_converged",
+    "mps_mpo",
+    "mpdo",
+    "MPDOState",
+    "Dephasing",
+    "AmplitudeDamping",
+    "get_kraus_ops"
+
 ]

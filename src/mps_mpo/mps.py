@@ -210,3 +210,73 @@ def init_mps(
         B_list.append(B)
 
     return (B_list, lam_list)
+
+#-----------------------------------NEW ADD-----------------------------------------
+def convert_vidal_to_canonical(
+    gamma_list: List[np.ndarray],
+    lam_list: List[np.ndarray],
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    """Convert a Vidal (Γ, Λ) MPS representation to left- and right-canonical forms.
+
+    Given a chain of ``L`` sites in the Vidal gauge, where each site carries a
+    Gamma tensor Γ[i] of shape ``(χ_L, d, χ_R)`` and each bond carries a
+    singular-value vector Λ[i] of shape ``(χ,)``, this function produces the
+    equivalent left-canonical tensors ``A`` and right-canonical tensors ``B``:
+
+    .. code-block:: text
+
+        A[i] = Λ[i] · Γ[i]          (absorb left bond into Γ)
+        B[i] = Γ[i] · Λ[i+1]        (absorb right bond into Γ)
+
+    Both ``A`` and ``B`` preserve the standard MPS index ordering
+    ``(χ_L, d, χ_R)``, where ``d`` is the local physical dimension.
+
+    Parameters
+    ----------
+    gamma_list : list of np.ndarray
+        Length-``L`` list of Gamma tensors, each with shape ``(χ_L, d, χ_R)``.
+    lam_list : list of np.ndarray
+        Length-``(L+1)`` list of singular-value (Schmidt) vectors on each bond,
+        including the two boundary bonds (which are typically ``[1.0]`` for
+        open boundary conditions).
+
+    Returns
+    -------
+    A_list : list of np.ndarray
+        Left-canonical tensors ``A[i]`` of shape ``(χ_L, d, χ_R)``.
+    B_list : list of np.ndarray
+        Right-canonical tensors ``B[i]`` of shape ``(χ_L, d, χ_R)``.
+
+    Raises
+    ------
+    ValueError
+        If ``lam_list`` does not contain exactly ``len(gamma_list) + 1`` entries.
+
+    Notes
+    -----
+    No transpositions are applied because the Gamma tensors are already stored
+    in the ``(χ_L, d, χ_R)`` convention.  Broadcasting is used to keep the
+    contractions allocation-efficient.
+    """
+    n_sites = len(gamma_list)
+
+    if len(lam_list) != n_sites + 1:
+        raise ValueError(
+            f"Expected len(lam_list) == len(gamma_list) + 1 "
+            f"({n_sites + 1}), got {len(lam_list)}."
+        )
+
+    A_list: List[np.ndarray] = []
+    B_list: List[np.ndarray] = []
+
+    for i, gamma in enumerate(gamma_list):
+        lam_left  = lam_list[i]        # shape: (χ_L,)
+        lam_right = lam_list[i + 1]    # shape: (χ_R,)
+
+        # Left-canonical: absorb Λ_left on bond axis 0  → A[i] = Λ[i] · Γ[i]
+        A_list.append(lam_left[:, np.newaxis, np.newaxis] * gamma)
+
+        # Right-canonical: absorb Λ_right on bond axis 2 → B[i] = Γ[i] · Λ[i+1]
+        B_list.append(gamma * lam_right[np.newaxis, np.newaxis, :])
+
+    return A_list, B_list
